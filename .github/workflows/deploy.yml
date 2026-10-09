@@ -1,0 +1,53 @@
+name: Deploy Vite com Bun para o GitHub Pages
+
+on:
+  push:
+    branches: ["main"] # Altere para "main" se sua branch principal mudar de nome
+
+  # Permite rodar esse fluxo manualmente na aba Actions
+  workflow_dispatch:
+
+# Define as permissões necessárias para o GitHub Actions fazer o deploy
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Garante apenas um deploy ativo por vez
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Instalar o Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Configurar as Páginas do GitHub
+        uses: actions/configure-pages@v4
+
+      - name: Instalar dependências
+        run: bun install
+
+      - name: Construir o projeto (Build)
+        run: bun run build
+
+      - name: Upload dos arquivos compilados
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # O Vite por padrão gera os arquivos na pasta 'dist'
+          path: './dist'
+
+      - name: Deploy para o GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

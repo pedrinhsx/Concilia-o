@@ -1,0 +1,6 @@
+{
+  "name": "Conciliador de Utilidades - Água, Luz & Internet",
+  "description": "Painel de controle unificado para conciliação financeira de faturas de água, luz e internet com importação de relatórios .xlsx e análise financeira automática.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
