@@ -14,7 +14,7 @@ import {
   Trash2, 
   Zap, 
   Droplets, 
-  Wifi,
+  Wifi, 
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
@@ -26,6 +26,9 @@ import {
 
 interface ReconciliationTableProps {
   records: ReconciledRecord[];
+  activeMonth: string;
+  onSelectMonth: (month: string) => void;
+  availableMonths: string[];
   onAutoReconcileAll: () => void;
   onOpenDiscrepancyModal: (record: ReconciledRecord) => void;
   onViewRecordDetails: (record: ReconciledRecord) => void;
@@ -37,6 +40,9 @@ interface ReconciliationTableProps {
 
 export const ReconciliationTable: React.FC<ReconciliationTableProps> = ({
   records,
+  activeMonth,
+  onSelectMonth,
+  availableMonths,
   onAutoReconcileAll,
   onOpenDiscrepancyModal,
   onViewRecordDetails,
@@ -45,50 +51,57 @@ export const ReconciliationTable: React.FC<ReconciliationTableProps> = ({
   onOpenUpload,
   onOpenManualEntry
 }) => {
-  const [filterState, setFilterState] = useState<FilterState>({
+  const [filterState, setFilterState] = useState<{
+    utilityType: 'todas' | UtilityType;
+    reconciliationStatus: 'todos' | ReconciliationStatus;
+    condoName: string;
+    searchTerm: string;
+  }>({
     utilityType: 'todas',
     reconciliationStatus: 'todos',
-    competence: 'todas',
-    unitName: 'todas',
+    condoName: 'todas',
     searchTerm: ''
   });
 
-  // Organized by due date (vencimento) by default as requested
-  const [sortField, setSortField] = useState<'competence' | 'dueDate' | 'difference' | 'billedAmount'>('dueDate');
-  const [sortAsc, setSortAsc] = useState<boolean>(true); // Earliest due date first
+  // Default sorting organized by due date (Vencimento)
+  const [sortField, setSortField] = useState<'dueDate' | 'condoName' | 'provider' | 'billedAmount' | 'difference'>('dueDate');
+  const [sortAsc, setSortAsc] = useState<boolean>(true); // Chronological earliest first
 
-  // Extract unique competences and units for dropdowns
-  const availableCompetences = Array.from(new Set(records.map(r => r.competence))).filter(Boolean).sort().reverse();
-  const availableUnits = Array.from(new Set(records.map(r => r.unitName))).filter(Boolean).sort();
+  // Unique Condos for filter
+  const uniqueCondoNames = Array.from(new Set(records.map(r => r.condoName))).filter(Boolean).sort();
 
-  // Filter logic
+  // Filter records
   const filteredRecords = records.filter((r) => {
+    // 1. Month filter: filter by activeMonth unless activeMonth === 'todas'
+    if (activeMonth !== 'todas' && r.competence !== activeMonth) {
+      return false;
+    }
+    // 2. Utility type
     if (filterState.utilityType !== 'todas' && r.utilityType !== filterState.utilityType) {
       return false;
     }
+    // 3. Reconciliation status
     if (filterState.reconciliationStatus !== 'todos' && r.reconciliationStatus !== filterState.reconciliationStatus) {
       return false;
     }
-    if (filterState.competence !== 'todas' && r.competence !== filterState.competence) {
+    // 4. Condo filter
+    if (filterState.condoName !== 'todas' && r.condoName !== filterState.condoName) {
       return false;
     }
-    if (filterState.unitName !== 'todas' && r.unitName !== filterState.unitName) {
-      return false;
-    }
+    // 5. Search
     if (filterState.searchTerm.trim() !== '') {
       const q = filterState.searchTerm.toLowerCase();
       const match = 
+        r.condoName.toLowerCase().includes(q) ||
         r.provider.toLowerCase().includes(q) ||
         r.installationCode.toLowerCase().includes(q) ||
-        r.unitName.toLowerCase().includes(q) ||
-        (r.bill?.invoiceNumber && r.bill.invoiceNumber.toLowerCase().includes(q)) ||
-        (r.auditNotes && r.auditNotes.toLowerCase().includes(q));
+        (r.bill?.invoiceNumber && r.bill.invoiceNumber.toLowerCase().includes(q));
       if (!match) return false;
     }
     return true;
   });
 
-  // Sort logic (organizes by dueDate, competence, etc.)
+  // Sort records
   const sortedRecords = [...filteredRecords].sort((a, b) => {
     let comparison = 0;
     if (sortField === 'dueDate') {
@@ -98,64 +111,75 @@ export const ReconciliationTable: React.FC<ReconciliationTableProps> = ({
       else if (!dateA) comparison = 1;
       else if (!dateB) comparison = -1;
       else comparison = dateA.localeCompare(dateB);
-    } else if (sortField === 'competence') {
-      comparison = (a.competence || '').localeCompare(b.competence || '');
-    } else if (sortField === 'difference') {
-      comparison = Math.abs(a.difference) - Math.abs(b.difference);
+    } else if (sortField === 'condoName') {
+      comparison = (a.condoName || '').localeCompare(b.condoName || '');
+    } else if (sortField === 'provider') {
+      comparison = (a.provider || '').localeCompare(b.provider || '');
     } else if (sortField === 'billedAmount') {
       comparison = a.billedAmount - b.billedAmount;
+    } else if (sortField === 'difference') {
+      comparison = Math.abs(a.difference) - Math.abs(b.difference);
     }
     return sortAsc ? comparison : -comparison;
   });
 
-  const handleSortToggle = (field: 'competence' | 'dueDate' | 'difference' | 'billedAmount') => {
+  const handleSortToggle = (field: 'dueDate' | 'condoName' | 'provider' | 'billedAmount' | 'difference') => {
     if (sortField === field) {
       setSortAsc(!sortAsc);
     } else {
       setSortField(field);
-      setSortAsc(true); // Default to ascending when clicking new column
+      setSortAsc(true);
     }
   };
 
   const formatCurrency = (val: number) => {
-    return val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    return (val || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   };
 
-  const getStatusDisplay = (status: ReconciliationStatus) => {
+  // Status as ONLY a colored dot per user request: "o status pode ser só a 'Bolinha' da cor do status atual"
+  const renderStatusDot = (status: ReconciliationStatus) => {
     switch (status) {
       case 'conciliado':
         return (
-          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-800">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-            Conciliado
-          </span>
+          <span 
+            title="Conciliado com Sucesso" 
+            className="w-3 h-3 rounded-full bg-emerald-500 inline-block shadow-2xs hover:scale-125 transition-transform" 
+          />
         );
       case 'divergencia_valor':
         return (
-          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-800">
-            <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
-            Divergência
-          </span>
+          <span 
+            title="Divergência de Valor" 
+            className="w-3 h-3 rounded-full bg-amber-500 inline-block shadow-2xs hover:scale-125 transition-transform" 
+          />
+        );
+      case 'nao_lancada':
+        return (
+          <span 
+            title="Não Lançada (Fatura fixa não localizada no .xlsx do mês)" 
+            className="w-3 h-3 rounded-full bg-rose-500 inline-block shadow-2xs hover:scale-125 transition-transform" 
+          />
         );
       case 'pendente_pagamento':
         return (
-          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-800">
-            <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
-            Pendente ERP
-          </span>
+          <span 
+            title="Pendente no Contas a Pagar / ERP" 
+            className="w-3 h-3 rounded-full bg-blue-500 inline-block shadow-2xs hover:scale-125 transition-transform" 
+          />
         );
       case 'lancamento_sem_fatura':
         return (
-          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-purple-800">
-            <span className="w-2 h-2 rounded-full bg-purple-500 shrink-0" />
-            Sem Fatura .xlsx
-          </span>
+          <span 
+            title="Lançamento sem fatura .xlsx correspondente" 
+            className="w-3 h-3 rounded-full bg-purple-500 inline-block shadow-2xs hover:scale-125 transition-transform" 
+          />
         );
       default:
         return (
-          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-            {status}
-          </span>
+          <span 
+            title={status} 
+            className="w-3 h-3 rounded-full bg-slate-400 inline-block" 
+          />
         );
     }
   };
@@ -163,92 +187,57 @@ export const ReconciliationTable: React.FC<ReconciliationTableProps> = ({
   const getUtilityIcon = (type: UtilityType) => {
     switch (type) {
       case 'luz':
-        return <Zap className="w-3.5 h-3.5 text-amber-600" />;
+        return <Zap className="w-3 h-3 text-amber-500" />;
       case 'agua':
-        return <Droplets className="w-3.5 h-3.5 text-cyan-600" />;
+        return <Droplets className="w-3 h-3 text-cyan-500" />;
       case 'internet':
-        return <Wifi className="w-3.5 h-3.5 text-indigo-600" />;
+        return <Wifi className="w-3 h-3 text-indigo-500" />;
     }
+  };
+
+  const renderSortArrow = (field: 'dueDate' | 'condoName' | 'provider' | 'billedAmount' | 'difference') => {
+    if (sortField !== field) return <ArrowUpDown className="w-3 h-3 text-slate-400" />;
+    return sortAsc ? <ArrowUp className="w-3 h-3 text-slate-900" /> : <ArrowDown className="w-3 h-3 text-slate-900" />;
   };
 
   const pendingEligibleCount = records.filter(r => r.reconciliationStatus === 'pendente_pagamento' || r.reconciliationStatus === 'divergencia_valor').length;
 
-  // Render Sort Header Helper
-  const renderSortIndicator = (field: 'competence' | 'dueDate' | 'difference' | 'billedAmount') => {
-    if (sortField !== field) {
-      return <ArrowUpDown className="w-3 h-3 text-slate-400" />;
-    }
-    return sortAsc ? (
-      <ArrowUp className="w-3 h-3 text-slate-900 font-bold" />
-    ) : (
-      <ArrowDown className="w-3 h-3 text-slate-900 font-bold" />
-    );
-  };
-
   return (
     <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
       
-      {/* Table Action & Filter Toolbar */}
+      {/* Top Filter & Month Selector */}
       <div className="p-3.5 border-b border-slate-200 space-y-3 bg-slate-50/50">
         
-        {/* Top Controls: Utility Type Segmented Controls & Quick Reconcile All */}
+        {/* Month Navigation & Action Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
           
-          {/* Segmented Category Buttons */}
-          <div className="flex items-center gap-1 p-1 bg-slate-200/70 rounded-lg shrink-0">
-            <button
-              onClick={() => setFilterState({ ...filterState, utilityType: 'todas' })}
-              className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors ${
-                filterState.utilityType === 'todas'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
+          {/* Active Month Selector (User requested month-by-month expenses) */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-slate-500" />
+              <span>Mês de Referência:</span>
+            </span>
+            <select
+              value={activeMonth}
+              onChange={(e) => onSelectMonth(e.target.value)}
+              className="px-2.5 py-1 text-xs font-bold text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900 shadow-2xs"
             >
-              Todas as Utilidades
-            </button>
-            <button
-              onClick={() => setFilterState({ ...filterState, utilityType: 'luz' })}
-              className={`flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-md transition-colors ${
-                filterState.utilityType === 'luz'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Zap className="w-3 h-3 text-amber-500" />
-              Luz (Energia)
-            </button>
-            <button
-              onClick={() => setFilterState({ ...filterState, utilityType: 'agua' })}
-              className={`flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-md transition-colors ${
-                filterState.utilityType === 'agua'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Droplets className="w-3 h-3 text-cyan-500" />
-              Água & Esgoto
-            </button>
-            <button
-              onClick={() => setFilterState({ ...filterState, utilityType: 'internet' })}
-              className={`flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-md transition-colors ${
-                filterState.utilityType === 'internet'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Wifi className="w-3 h-3 text-indigo-500" />
-              Internet & Telecom
-            </button>
+              {availableMonths.length === 0 && <option value="todas">Todos os meses</option>}
+              {availableMonths.map(m => (
+                <option key={m} value={m}>Mês {m}</option>
+              ))}
+              <option value="todas">Ver Todos os Meses</option>
+            </select>
           </div>
 
-          {/* Quick 1-Click Auto Reconcile Batch */}
+          {/* Quick 1-Click Auto Reconcile */}
           {pendingEligibleCount > 0 && (
             <button
               onClick={onAutoReconcileAll}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-800 bg-emerald-100/70 hover:bg-emerald-200/80 rounded-lg transition-colors shrink-0"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 rounded-lg transition-colors shrink-0"
             >
               <CheckCheck className="w-3.5 h-3.5 text-emerald-700" />
-              <span>Conciliar Tudo ({pendingEligibleCount} pendentes)</span>
+              <span>Conciliar Pendências ({pendingEligibleCount})</span>
             </button>
           )}
 
@@ -257,19 +246,19 @@ export const ReconciliationTable: React.FC<ReconciliationTableProps> = ({
         {/* Filters Row */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
           
-          {/* Search Input */}
+          {/* Search */}
           <div className="relative">
             <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
-              placeholder="Buscar por fornecedor, código, fatura..."
+              placeholder="Buscar por condomínio, UC, fornecedor..."
               value={filterState.searchTerm}
               onChange={(e) => setFilterState({ ...filterState, searchTerm: e.target.value })}
               className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-1 focus:ring-slate-900"
             />
           </div>
 
-          {/* Status Select */}
+          {/* Status Filter */}
           <div>
             <select
               value={filterState.reconciliationStatus}
@@ -277,37 +266,38 @@ export const ReconciliationTable: React.FC<ReconciliationTableProps> = ({
               className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-900"
             >
               <option value="todos">Todos os Status</option>
-              <option value="conciliado">🟢 100% Conciliados</option>
+              <option value="conciliado">🟢 Conciliados</option>
               <option value="divergencia_valor">🟡 Divergência de Valor</option>
-              <option value="pendente_pagamento">🔵 Pendente de Baixa no ERP</option>
-              <option value="lancamento_sem_fatura">🟣 Lançamento Sem Fatura .xlsx</option>
+              <option value="nao_lancada">🔴 Não Lançadas (Faltando)</option>
+              <option value="pendente_pagamento">🔵 Pendente no ERP</option>
+              <option value="lancamento_sem_fatura">🟣 Sem Fatura .xlsx</option>
             </select>
           </div>
 
-          {/* Competence Select */}
+          {/* Utility Type */}
           <div>
             <select
-              value={filterState.competence}
-              onChange={(e) => setFilterState({ ...filterState, competence: e.target.value })}
+              value={filterState.utilityType}
+              onChange={(e) => setFilterState({ ...filterState, utilityType: e.target.value as any })}
               className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-900"
             >
-              <option value="todas">Todas as Competências</option>
-              {availableCompetences.map(c => (
-                <option key={c} value={c}>Competência {c}</option>
-              ))}
+              <option value="todas">Todas as Utilidades</option>
+              <option value="luz">⚡ Energia Elétrica (Luz / Celesc)</option>
+              <option value="agua">💧 Água e Saneamento (Casan)</option>
+              <option value="internet">🌐 Internet & Telecom</option>
             </select>
           </div>
 
-          {/* Unit / Filial Select */}
+          {/* Condominium Filter */}
           <div>
             <select
-              value={filterState.unitName}
-              onChange={(e) => setFilterState({ ...filterState, unitName: e.target.value })}
+              value={filterState.condoName}
+              onChange={(e) => setFilterState({ ...filterState, condoName: e.target.value })}
               className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-900"
             >
-              <option value="todas">Todas as Unidades / Filiais</option>
-              {availableUnits.map(u => (
-                <option key={u} value={u}>{u}</option>
+              <option value="todas">Todos os Condomínios</option>
+              {uniqueCondoNames.map(name => (
+                <option key={name} value={name}>{name}</option>
               ))}
             </select>
           </div>
@@ -321,39 +311,55 @@ export const ReconciliationTable: React.FC<ReconciliationTableProps> = ({
         <table className="w-full text-left text-xs">
           <thead className="bg-slate-100/70 border-b border-slate-200 text-slate-600 font-semibold select-none">
             <tr>
-              <th className="py-2.5 px-3.5">Status</th>
-              <th className="py-2.5 px-3.5">Concessionária & Código</th>
-              <th className="py-2.5 px-3.5">Unidade / Local</th>
+              {/* Bolinha Status Header */}
+              <th className="py-2.5 px-3 text-center w-12" title="Status de Conciliação">
+                Status
+              </th>
 
-              {/* Vencimento - Highlighted as primary sort column */}
+              {/* Condomínio Column */}
+              <th 
+                className={`py-2.5 px-3.5 cursor-pointer transition-colors ${
+                  sortField === 'condoName' ? 'text-slate-900 bg-slate-200/60 font-bold' : 'hover:text-slate-900'
+                }`}
+                onClick={() => handleSortToggle('condoName')}
+              >
+                <div className="flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Condomínio</span>
+                  {renderSortArrow('condoName')}
+                </div>
+              </th>
+
+              {/* Fornecedor Column (substituiu Unidade/Local) */}
+              <th 
+                className={`py-2.5 px-3.5 cursor-pointer transition-colors ${
+                  sortField === 'provider' ? 'text-slate-900 bg-slate-200/60 font-bold' : 'hover:text-slate-900'
+                }`}
+                onClick={() => handleSortToggle('provider')}
+              >
+                <div className="flex items-center gap-1.5">
+                  <span>Fornecedor</span>
+                  {renderSortArrow('provider')}
+                </div>
+              </th>
+
+              {/* Vencimento Column - Primary Order */}
               <th 
                 className={`py-2.5 px-3.5 cursor-pointer transition-colors ${
                   sortField === 'dueDate' ? 'text-slate-900 bg-slate-200/60 font-bold' : 'hover:text-slate-900'
                 }`}
                 onClick={() => handleSortToggle('dueDate')}
-                title="Clique para ordenar por data de vencimento"
               >
                 <div className="flex items-center gap-1.5">
                   <Calendar className="w-3.5 h-3.5 text-slate-500" />
                   <span>Vencimento</span>
-                  {renderSortIndicator('dueDate')}
+                  {renderSortArrow('dueDate')}
                 </div>
               </th>
 
-              <th 
-                className={`py-2.5 px-3.5 cursor-pointer transition-colors ${
-                  sortField === 'competence' ? 'text-slate-900 bg-slate-200/60 font-bold' : 'hover:text-slate-900'
-                }`}
-                onClick={() => handleSortToggle('competence')}
-              >
-                <div className="flex items-center gap-1">
-                  <span>Competência</span>
-                  {renderSortIndicator('competence')}
-                </div>
-              </th>
+              <th className="py-2.5 px-3.5">Competência</th>
 
-              <th className="py-2.5 px-3.5">Consumo Medido</th>
-
+              {/* Valor Fatura (.xlsx) */}
               <th 
                 className={`py-2.5 px-3.5 text-right cursor-pointer transition-colors ${
                   sortField === 'billedAmount' ? 'text-slate-900 bg-slate-200/60 font-bold' : 'hover:text-slate-900'
@@ -361,13 +367,15 @@ export const ReconciliationTable: React.FC<ReconciliationTableProps> = ({
                 onClick={() => handleSortToggle('billedAmount')}
               >
                 <div className="flex items-center justify-end gap-1">
-                  <span>Fatura (.xlsx)</span>
-                  {renderSortIndicator('billedAmount')}
+                  <span>Valor Fatura (.xlsx)</span>
+                  {renderSortArrow('billedAmount')}
                 </div>
               </th>
 
+              {/* Valor ERP */}
               <th className="py-2.5 px-3.5 text-right">Lançado (ERP)</th>
 
+              {/* Diferença */}
               <th 
                 className={`py-2.5 px-3.5 text-right cursor-pointer transition-colors ${
                   sortField === 'difference' ? 'text-slate-900 bg-slate-200/60 font-bold' : 'hover:text-slate-900'
@@ -376,25 +384,27 @@ export const ReconciliationTable: React.FC<ReconciliationTableProps> = ({
               >
                 <div className="flex items-center justify-end gap-1">
                   <span>Diferença</span>
-                  {renderSortIndicator('difference')}
+                  {renderSortArrow('difference')}
                 </div>
               </th>
 
-              <th className="py-2.5 px-3.5 text-center">Ações</th>
+              <th className="py-2.5 px-3.5 text-center w-24">Ações</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {sortedRecords.length === 0 ? (
               <tr>
-                <td colSpan={10} className="py-12 px-4 text-center text-slate-500">
+                <td colSpan={9} className="py-12 px-4 text-center text-slate-500">
                   <div className="max-w-md mx-auto space-y-3">
-                    <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
-                      <Calendar className="w-6 h-6" />
+                    <div className="w-11 h-11 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
+                      <Calendar className="w-5 h-5" />
                     </div>
                     <div>
-                      <p className="text-sm font-bold text-slate-800">Nenhum lançamento no painel</p>
+                      <p className="text-sm font-bold text-slate-800">
+                        Nenhum lançamento para o mês {activeMonth !== 'todas' ? activeMonth : 'selecionado'}
+                      </p>
                       <p className="text-xs text-slate-500 mt-1">
-                        Anexe o relatório .xlsx emitido pela sua concessionária ou cadastre um lançamento manual para iniciar a conciliação por vencimento.
+                        Anexe a planilha .xlsx do mês da Celesc/Casan ou cadastre as despesas fixas para começar a conferência.
                       </p>
                     </div>
                     <div className="flex items-center justify-center gap-2 pt-1">
@@ -424,47 +434,46 @@ export const ReconciliationTable: React.FC<ReconciliationTableProps> = ({
               sortedRecords.map((r) => {
                 const hasDiscrepancy = Math.abs(r.difference) > 0.05;
                 const isDiffPositive = r.difference > 0;
+                const isNotBilled = r.reconciliationStatus === 'nao_lancada';
 
                 return (
                   <tr 
                     key={r.id} 
-                    className="hover:bg-slate-50 transition-colors group"
+                    className={`hover:bg-slate-50 transition-colors group ${isNotBilled ? 'bg-rose-50/20' : ''}`}
                   >
-                    {/* Status */}
-                    <td className="py-2.5 px-3.5 whitespace-nowrap">
-                      {getStatusDisplay(r.reconciliationStatus)}
+                    {/* Status Bolinha (Just the dot per user request) */}
+                    <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                      <div className="flex items-center justify-center">
+                        {renderStatusDot(r.reconciliationStatus)}
+                      </div>
                     </td>
 
-                    {/* Concessionária & Código */}
+                    {/* Condomínio e UC */}
                     <td className="py-2.5 px-3.5">
                       <div className="flex items-center gap-2">
                         <div className="p-1 rounded bg-slate-100 shrink-0">
                           {getUtilityIcon(r.utilityType)}
                         </div>
                         <div>
-                          <p className="font-semibold text-slate-900">{r.provider}</p>
+                          <p className="font-semibold text-slate-900">{r.condoName}</p>
                           <p className="text-2xs text-slate-500 font-mono">
-                            Cód: {r.installationCode}
-                            {r.bill?.invoiceNumber && ` · ${r.bill.invoiceNumber}`}
+                            UC / Matrícula: <strong>{r.installationCode}</strong>
                           </p>
                         </div>
                       </div>
                     </td>
 
-                    {/* Unidade */}
-                    <td className="py-2.5 px-3.5 whitespace-nowrap text-slate-700">
-                      <span className="flex items-center gap-1.5">
-                        <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span className="truncate max-w-[140px]" title={r.unitName}>{r.unitName}</span>
-                      </span>
+                    {/* Fornecedor (Nome do Fornecedor) */}
+                    <td className="py-2.5 px-3.5 whitespace-nowrap font-medium text-slate-800">
+                      {r.provider}
                     </td>
 
-                    {/* Vencimento (primary order column) */}
+                    {/* Vencimento (organizado por vencimento) */}
                     <td className="py-2.5 px-3.5 whitespace-nowrap font-medium text-slate-900 bg-slate-50/40">
                       {r.dueDate ? (
-                        <div className="flex items-center gap-1 font-mono">
-                          <span>{new Date(r.dueDate + 'T00:00:00').toLocaleDateString('pt-BR')}</span>
-                        </div>
+                        <span className="font-mono">
+                          {new Date(r.dueDate + 'T00:00:00').toLocaleDateString('pt-BR')}
+                        </span>
                       ) : (
                         <span className="text-slate-400">-</span>
                       )}
@@ -475,40 +484,27 @@ export const ReconciliationTable: React.FC<ReconciliationTableProps> = ({
                       {r.competence}
                     </td>
 
-                    {/* Consumo */}
-                    <td className="py-2.5 px-3.5 whitespace-nowrap text-slate-600">
-                      {r.consumptionValue ? (
-                        <div>
-                          <span className="font-semibold text-slate-800">
-                            {r.consumptionValue.toLocaleString('pt-BR')} {r.consumptionUnit}
-                          </span>
-                          {r.tariffFlag && r.tariffFlag !== 'n_a' && (
-                            <span className={`block text-2xs font-medium ${
-                              r.tariffFlag.includes('vermelha') ? 'text-rose-600 font-bold' :
-                              r.tariffFlag === 'amarela' ? 'text-amber-600 font-bold' : 'text-emerald-700'
-                            }`}>
-                              Bandeira {r.tariffFlag.replace('_', ' ')}
-                            </span>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-slate-400">-</span>
-                      )}
-                    </td>
-
                     {/* Valor Fatura .xlsx */}
                     <td className="py-2.5 px-3.5 text-right whitespace-nowrap font-semibold text-slate-900 font-mono">
-                      {r.billedAmount > 0 ? formatCurrency(r.billedAmount) : <span className="text-slate-400 font-normal">Não anexada</span>}
+                      {r.billedAmount > 0 ? (
+                        formatCurrency(r.billedAmount)
+                      ) : (
+                        <span className="text-rose-600 font-normal italic">
+                          {isNotBilled ? 'Não veio no .xlsx' : 'Não anexada'}
+                        </span>
+                      )}
                     </td>
 
                     {/* Valor ERP */}
                     <td className="py-2.5 px-3.5 text-right whitespace-nowrap text-slate-700 font-mono">
-                      {r.ledgerAmount > 0 ? formatCurrency(r.ledgerAmount) : <span className="text-slate-400">Não provisionado</span>}
+                      {r.ledgerAmount > 0 ? formatCurrency(r.ledgerAmount) : <span className="text-slate-400">Pendente</span>}
                     </td>
 
                     {/* Diferença */}
                     <td className="py-2.5 px-3.5 text-right whitespace-nowrap font-mono font-bold">
-                      {hasDiscrepancy ? (
+                      {isNotBilled ? (
+                        <span className="text-rose-600 text-2xs">Faltando</span>
+                      ) : hasDiscrepancy ? (
                         <span className={`${isDiffPositive ? 'text-amber-700' : 'text-purple-700'}`}>
                           {isDiffPositive ? '+' : ''}{formatCurrency(r.difference)}
                         </span>
@@ -517,11 +513,11 @@ export const ReconciliationTable: React.FC<ReconciliationTableProps> = ({
                       )}
                     </td>
 
-                    {/* Actions */}
+                    {/* Ações */}
                     <td className="py-2.5 px-3.5 text-center whitespace-nowrap">
                       <div className="flex items-center justify-center gap-1">
                         
-                        {/* Se houver divergência */}
+                        {/* Se divergência */}
                         {r.reconciliationStatus === 'divergencia_valor' && (
                           <button
                             onClick={() => onOpenDiscrepancyModal(r)}
@@ -546,7 +542,7 @@ export const ReconciliationTable: React.FC<ReconciliationTableProps> = ({
                         {/* Ver Detalhes */}
                         <button
                           onClick={() => onViewRecordDetails(r)}
-                          title="Ver Ficha Completa e Auditoria"
+                          title="Ver Detalhes do Lançamento"
                           className="p-1 rounded hover:bg-slate-200 text-slate-600 transition-colors"
                         >
                           <Eye className="w-3.5 h-3.5" />
@@ -572,25 +568,28 @@ export const ReconciliationTable: React.FC<ReconciliationTableProps> = ({
         </table>
       </div>
 
-      {/* Table Footer with Summary Count */}
-      {sortedRecords.length > 0 && (
-        <div className="p-3 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-2">
-          <div>
-            Mostrando <strong className="text-slate-800">{sortedRecords.length}</strong> lançamento(s) ordenados por <strong className="text-slate-800">Vencimento</strong>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-emerald-500" /> Conciliado
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-amber-500" /> Divergência
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-blue-500" /> Pendente Baixa
-            </span>
-          </div>
+      {/* Table Footer with Legend for Status Dots */}
+      <div className="p-3 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between text-2xs text-slate-500 gap-2">
+        <div>
+          Mostrando <strong className="text-slate-800">{sortedRecords.length}</strong> conta(s) do mês ordenadas por <strong className="text-slate-800">Vencimento</strong>
         </div>
-      )}
+        
+        {/* Status Dot Legend */}
+        <div className="flex items-center gap-3">
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Conciliada
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-500" /> Divergência
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-rose-500" /> Não Lançada (.xlsx)
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-blue-500" /> Pendente no ERP
+          </span>
+        </div>
+      </div>
 
     </div>
   );

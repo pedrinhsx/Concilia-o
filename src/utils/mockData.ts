@@ -1,6 +1,4 @@
-import { UtilityBill, LedgerEntry, UtilityInstallation } from '../types/reconciliation';
-
-export const INITIAL_INSTALLATIONS: UtilityInstallation[] = [];
+import { UtilityBill, LedgerEntry } from '../types/reconciliation';
 
 export const INITIAL_BILLS: UtilityBill[] = [];
 

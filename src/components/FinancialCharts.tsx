@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { ReconciledRecord } from '../types/reconciliation';
-import { BarChart3, PieChart, TrendingUp, Info } from 'lucide-react';
+import { BarChart3, PieChart } from 'lucide-react';
 
 interface FinancialChartsProps {
   records: ReconciledRecord[];
 }
 
 export const FinancialCharts: React.FC<FinancialChartsProps> = ({ records }) => {
-  const [activeTab, setActiveTab] = useState<'evolution' | 'composition' | 'consumption'>('evolution');
+  const [activeTab, setActiveTab] = useState<'evolution' | 'composition'>('evolution');
   const [hoveredMonth, setHoveredMonth] = useState<string | null>(null);
 
   // Group by competence (month)
@@ -17,8 +17,6 @@ export const FinancialCharts: React.FC<FinancialChartsProps> = ({ records }) => 
     agua: number;
     internet: number;
     total: number;
-    luzKwh: number;
-    aguaM3: number;
   }>();
 
   records.forEach((r) => {
@@ -29,9 +27,7 @@ export const FinancialCharts: React.FC<FinancialChartsProps> = ({ records }) => 
         luz: 0,
         agua: 0,
         internet: 0,
-        total: 0,
-        luzKwh: 0,
-        aguaM3: 0
+        total: 0
       });
     }
 
@@ -40,14 +36,8 @@ export const FinancialCharts: React.FC<FinancialChartsProps> = ({ records }) => 
 
     if (r.utilityType === 'luz') {
       item.luz += amount;
-      if (r.consumptionValue && r.consumptionUnit === 'kWh') {
-        item.luzKwh += r.consumptionValue;
-      }
     } else if (r.utilityType === 'agua') {
       item.agua += amount;
-      if (r.consumptionValue && r.consumptionUnit === 'm³') {
-        item.aguaM3 += r.consumptionValue;
-      }
     } else if (r.utilityType === 'internet') {
       item.internet += amount;
     }
@@ -128,18 +118,6 @@ export const FinancialCharts: React.FC<FinancialChartsProps> = ({ records }) => 
           >
             <PieChart className="w-3.5 h-3.5 text-slate-600" />
             <span>Distribuição %</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('consumption')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
-              activeTab === 'consumption' 
-                ? 'bg-white text-slate-900 shadow-xs' 
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <TrendingUp className="w-3.5 h-3.5 text-slate-600" />
-            <span>Físico (kWh/m³)</span>
           </button>
         </div>
       </div>
@@ -345,67 +323,6 @@ export const FinancialCharts: React.FC<FinancialChartsProps> = ({ records }) => 
                 <div className="text-right">
                   <p className="text-xs font-extrabold text-slate-900">{formatBRL(totalInternet)}</p>
                   <p className="text-2xs font-semibold text-indigo-700">{pctInternet}% do total</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'consumption' && (
-          <div className="space-y-4">
-            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs text-slate-600 flex items-start gap-2">
-              <Info className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
-              <span>
-                Esta análise cruza o consumo medido em <strong>kWh</strong> (eletricidade) e <strong>m³</strong> (água) contra o valor faturado. Permite identificar se picos no boleto foram causados por <strong>aumento de demanda física</strong> ou por <strong>reajustes de tarifa/bandeira da ANEEL</strong>.
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Luz kWh History */}
-              <div className="border border-slate-200 rounded-lg p-3.5">
-                <h3 className="text-xs font-bold text-slate-900 mb-3 flex items-center justify-between">
-                  <span>⚡ Evolução Consumo de Luz (kWh)</span>
-                  <span className="text-2xs font-normal text-slate-500">Quilowatt-hora</span>
-                </h3>
-                <div className="space-y-2">
-                  {sortedMonths.map(m => (
-                    <div key={m.competence} className="space-y-1">
-                      <div className="flex justify-between text-xs">
-                        <span className="font-semibold text-slate-700">{formatMonthLabel(m.competence)}</span>
-                        <span className="text-slate-600 font-mono">{m.luzKwh.toLocaleString('pt-BR')} kWh ({formatBRL(m.luz)})</span>
-                      </div>
-                      <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-amber-400 rounded-full" 
-                          style={{ width: `${Math.min(100, (m.luzKwh / 20000) * 100)}%` }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Água m3 History */}
-              <div className="border border-slate-200 rounded-lg p-3.5">
-                <h3 className="text-xs font-bold text-slate-900 mb-3 flex items-center justify-between">
-                  <span>💧 Evolução Consumo Hídrico (m³)</span>
-                  <span className="text-2xs font-normal text-slate-500">Metros cúbicos</span>
-                </h3>
-                <div className="space-y-2">
-                  {sortedMonths.map(m => (
-                    <div key={m.competence} className="space-y-1">
-                      <div className="flex justify-between text-xs">
-                        <span className="font-semibold text-slate-700">{formatMonthLabel(m.competence)}</span>
-                        <span className="text-slate-600 font-mono">{m.aguaM3.toLocaleString('pt-BR')} m³ ({formatBRL(m.agua)})</span>
-                      </div>
-                      <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-cyan-400 rounded-full" 
-                          style={{ width: `${Math.min(100, (m.aguaM3 / 250) * 100)}%` }}
-                        />
-                      </div>
-                    </div>
-                  ))}
                 </div>
               </div>
             </div>

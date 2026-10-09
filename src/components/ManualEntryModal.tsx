@@ -1,79 +1,94 @@
-import React, { useState } from 'react';
-import { UtilityType, TariffFlag, UtilityBill, LedgerEntry, UtilityInstallation } from '../types/reconciliation';
-import { X, Plus, Receipt, Zap, Droplets, Wifi, Building2 } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { UtilityType, UtilityBill, LedgerEntry, Condominium, FixedProvider } from '../types/reconciliation';
+import { findSimilarCondominiums } from '../utils/condoImportHelper';
+import { X, Plus, Zap, Droplets, Wifi, Building2, Check, Sparkles } from 'lucide-react';
 
 interface ManualEntryModalProps {
   isOpen: boolean;
   onClose: () => void;
-  installations: UtilityInstallation[];
+  condos: Condominium[];
+  fixedProviders: FixedProvider[];
   onAddBill: (bill: UtilityBill) => void;
   onAddLedger: (ledger: LedgerEntry) => void;
+  onAddCondo?: (condo: Condominium) => void;
 }
 
 export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
   isOpen,
   onClose,
-  installations,
+  condos,
+  fixedProviders,
   onAddBill,
-  onAddLedger
+  onAddLedger,
+  onAddCondo
 }) => {
   const [entryMode, setEntryMode] = useState<'both' | 'bill_only' | 'ledger_only'>('both');
   const [utilityType, setUtilityType] = useState<UtilityType>('luz');
-  const [provider, setProvider] = useState('Enel Distribuição SP');
-  const [installationCode, setInstallationCode] = useState('004928104');
-  const [unitName, setUnitName] = useState('Sede Matriz - Av. Paulista');
+  const [condoName, setCondoName] = useState('');
+  const [installationCode, setInstallationCode] = useState(''); // UC / Matrícula
+  const [provider, setProvider] = useState('Celesc Distribuição');
   const [competence, setCompetence] = useState('2024-04');
   const [dueDate, setDueDate] = useState('2024-05-15');
-  const [billedAmount, setBilledAmount] = useState('3450.00');
-  const [ledgerAmount, setLedgerAmount] = useState('3450.00');
-  const [consumptionValue, setConsumptionValue] = useState('4800');
-  const [tariffFlag, setTariffFlag] = useState<TariffFlag>('verde');
+  const [billedAmount, setBilledAmount] = useState('');
+  const [ledgerAmount, setLedgerAmount] = useState('');
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [notes, setNotes] = useState('');
 
+  // Autocomplete suggestions state
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [suggestions, setSuggestions] = useState<Condominium[]>([]);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (condoName.trim().length > 0) {
+      const matches = findSimilarCondominiums(condoName, condos);
+      setSuggestions(matches);
+    } else {
+      setSuggestions([]);
+    }
+  }, [condoName, condos]);
+
   if (!isOpen) return null;
 
-  const handleInstallationSelect = (instId: string) => {
-    const inst = installations.find(i => i.id === instId);
-    if (inst) {
-      setUtilityType(inst.utilityType);
-      setProvider(inst.provider);
-      setInstallationCode(inst.code);
-      setUnitName(inst.unitName);
-      if (inst.baselineCost) {
-        setBilledAmount(inst.baselineCost.toString());
-        setLedgerAmount(inst.baselineCost.toString());
-      }
-      if (inst.averageConsumption) {
-        setConsumptionValue(inst.averageConsumption.toString());
-      }
+  const handleSelectSuggestion = (c: Condominium) => {
+    setCondoName(c.name);
+    if (c.uc) {
+      setInstallationCode(c.uc);
     }
+    setShowSuggestions(false);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const billedNum = parseFloat(billedAmount.replace(',', '.')) || 0;
-    const ledgerNum = parseFloat(ledgerAmount.replace(',', '.')) || 0;
-    const consumptionNum = consumptionValue ? parseFloat(consumptionValue.replace(',', '.')) : undefined;
+    const ledgerNum = parseFloat(ledgerAmount.replace(',', '.')) || billedNum;
 
     const baseId = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const finalCondoName = condoName.trim();
+    const finalUc = installationCode.trim() || 'UC-000';
+
+    // Auto add condo to list if new
+    if (onAddCondo && !condos.some(c => c.name.toLowerCase() === finalCondoName.toLowerCase())) {
+      onAddCondo({
+        id: `condo-${baseId}`,
+        name: finalCondoName,
+        uc: finalUc
+      });
+    }
 
     if (entryMode === 'both' || entryMode === 'bill_only') {
       const newBill: UtilityBill = {
         id: `bill-manual-${baseId}`,
         utilityType,
         provider,
-        installationCode,
-        unitName,
+        installationCode: finalUc,
+        condoName: finalCondoName,
         competence,
         dueDate,
         billedAmount: billedNum,
-        consumptionValue: consumptionNum,
-        consumptionUnit: utilityType === 'luz' ? 'kWh' : utilityType === 'agua' ? 'm³' : 'Mbps',
-        tariffFlag: utilityType === 'luz' ? tariffFlag : 'n_a',
-        invoiceNumber: invoiceNumber || `MAN-${competence.replace('-', '')}`,
+        invoiceNumber: invoiceNumber || `FAT-${competence.replace('-', '')}`,
         status: 'aberto',
-        notes: notes || 'Lançado manualmente no painel de controle'
+        notes: notes || 'Lançado manualmente no painel'
       };
       onAddBill(newBill);
     }
@@ -83,13 +98,13 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
         id: `led-manual-${baseId}`,
         utilityType,
         provider,
-        installationCode,
-        unitName,
+        installationCode: finalUc,
+        condoName: finalCondoName,
         competence,
         expectedDate: dueDate,
         actualPaymentDate: dueDate,
         ledgerAmount: entryMode === 'both' ? billedNum : ledgerNum,
-        paymentAccount: 'Banco Itaú Empresas (C/C 40291-3)',
+        paymentAccount: 'Conta Corrente Condomínio',
         documentNumber: invoiceNumber || `LANÇ-${competence.replace('-', '')}`,
         status: 'liquidado',
         notes: notes || 'Lançado no Contas a Pagar'
@@ -101,7 +116,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60">
       <div className="bg-white rounded-2xl max-w-xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
         
         {/* Header */}
@@ -112,10 +127,10 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold text-slate-900">
-                Novo Lançamento de Utilidade
+                Novo Lançamento de Conta
               </h2>
               <p className="text-xs text-slate-500">
-                Inserir fatura ou previsão manual de água, luz ou internet
+                Lançamento manual com sugestão de condomínios cadastrados
               </p>
             </div>
           </div>
@@ -172,104 +187,145 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
             </div>
           </div>
 
-          {/* Quick Preload from Registered Installations */}
-          {installations.length > 0 && (
-            <div className="space-y-1">
-              <label className="text-2xs font-bold uppercase tracking-wider text-slate-500">
-                Vincular a uma Instalação Cadastrada:
-              </label>
-              <select
-                onChange={(e) => handleInstallationSelect(e.target.value)}
-                className="w-full p-2 rounded-lg border border-slate-300 bg-white text-slate-800"
-              >
-                <option value="">-- Selecione para preenchimento rápido --</option>
-                {installations.map(inst => (
-                  <option key={inst.id} value={inst.id}>
-                    [{inst.utilityType.toUpperCase()}] {inst.provider} · {inst.unitName} (Cód: {inst.code})
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
           {/* Utility Type radio */}
           <div className="space-y-1">
             <label className="text-2xs font-bold uppercase tracking-wider text-slate-500">
-              Modalidade de Utilidade:
+              Modalidade:
             </label>
             <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
-                onClick={() => setUtilityType('luz')}
+                onClick={() => {
+                  setUtilityType('luz');
+                  setProvider('Celesc Distribuição');
+                }}
                 className={`flex items-center justify-center gap-1.5 p-2 rounded-lg border font-semibold ${
                   utilityType === 'luz' ? 'border-amber-500 bg-amber-50 text-amber-900' : 'border-slate-200 bg-white text-slate-600'
                 }`}
               >
                 <Zap className="w-3.5 h-3.5 text-amber-600" />
-                Luz (Energia)
+                Luz (Celesc)
               </button>
               <button
                 type="button"
-                onClick={() => setUtilityType('agua')}
+                onClick={() => {
+                  setUtilityType('agua');
+                  setProvider('Casan');
+                }}
                 className={`flex items-center justify-center gap-1.5 p-2 rounded-lg border font-semibold ${
                   utilityType === 'agua' ? 'border-cyan-500 bg-cyan-50 text-cyan-900' : 'border-slate-200 bg-white text-slate-600'
                 }`}
               >
                 <Droplets className="w-3.5 h-3.5 text-cyan-600" />
-                Água & Saneamento
+                Água (Casan)
               </button>
               <button
                 type="button"
-                onClick={() => setUtilityType('internet')}
+                onClick={() => {
+                  setUtilityType('internet');
+                  setProvider('Vivo Fibra');
+                }}
                 className={`flex items-center justify-center gap-1.5 p-2 rounded-lg border font-semibold ${
                   utilityType === 'internet' ? 'border-indigo-500 bg-indigo-50 text-indigo-900' : 'border-slate-200 bg-white text-slate-600'
                 }`}
               >
                 <Wifi className="w-3.5 h-3.5 text-indigo-600" />
-                Internet & Dados
+                Internet & Telecom
               </button>
             </div>
           </div>
 
-          {/* Provider and Code */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block font-semibold text-slate-700 mb-1">Concessionária / Fornecedor:</label>
+          {/* Condominium with Smart Suggestion / Autocomplete */}
+          <div className="relative" ref={dropdownRef}>
+            <label className="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
+              <span>Nome do Condomínio:</span>
+              <span className="text-2xs font-normal text-slate-500">
+                Digite para buscar ou criar
+              </span>
+            </label>
+            <div className="relative">
+              <Building2 className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
                 required
-                value={provider}
-                onChange={(e) => setProvider(e.target.value)}
-                placeholder="Ex: Enel, Sabesp, Vivo..."
-                className="w-full p-2 rounded-lg border border-slate-300"
+                placeholder="Ex: Residencial Solar das Palmeiras..."
+                value={condoName}
+                onChange={(e) => {
+                  setCondoName(e.target.value);
+                  setShowSuggestions(true);
+                }}
+                onFocus={() => setShowSuggestions(true)}
+                className="w-full pl-9 pr-3 py-2 text-xs rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-1 focus:ring-slate-900"
               />
             </div>
+
+            {/* Suggestions Dropdown */}
+            {showSuggestions && suggestions.length > 0 && (
+              <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-20 max-h-48 overflow-y-auto divide-y divide-slate-100">
+                <div className="px-3 py-1.5 bg-slate-50 text-2xs font-bold uppercase text-slate-500 flex items-center gap-1">
+                  <Sparkles className="w-3 h-3 text-amber-500" />
+                  <span>Condomínios parecidos sugeridos:</span>
+                </div>
+                {suggestions.map((s) => (
+                  <div
+                    key={s.id}
+                    onClick={() => handleSelectSuggestion(s)}
+                    className="p-2.5 px-3 hover:bg-amber-50/70 cursor-pointer flex items-center justify-between transition-colors"
+                  >
+                    <div>
+                      <p className="font-bold text-slate-900 text-xs">{s.name}</p>
+                      <p className="text-2xs text-slate-500 font-mono">UC: {s.uc}</p>
+                    </div>
+                    <span className="text-2xs font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                      Usar este
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* UC / Matrícula & Fornecedor */}
+          <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block font-semibold text-slate-700 mb-1">Cód. Instalação / Matrícula:</label>
+              <label className="block font-semibold text-slate-700 mb-1">
+                Unidade Consumidora / Matrícula (UC):
+              </label>
               <input
                 type="text"
                 required
                 value={installationCode}
                 onChange={(e) => setInstallationCode(e.target.value)}
-                placeholder="Ex: 004928104"
-                className="w-full p-2 rounded-lg border border-slate-300 font-mono"
+                placeholder="Ex: 9872134 (Celesc)"
+                className="w-full p-2 rounded-lg border border-slate-300 font-mono text-xs"
               />
             </div>
-          </div>
 
-          {/* Unit Name & Competence */}
-          <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block font-semibold text-slate-700 mb-1">Unidade / Centro de Custo:</label>
+              <label className="block font-semibold text-slate-700 mb-1">Fornecedor:</label>
               <input
                 type="text"
                 required
-                value={unitName}
-                onChange={(e) => setUnitName(e.target.value)}
-                placeholder="Ex: Sede Matriz, Filial..."
-                className="w-full p-2 rounded-lg border border-slate-300"
+                list="providers-list"
+                value={provider}
+                onChange={(e) => setProvider(e.target.value)}
+                placeholder="Ex: Celesc, Casan, Vivo..."
+                className="w-full p-2 rounded-lg border border-slate-300 text-xs"
               />
+              <datalist id="providers-list">
+                {fixedProviders.map(p => (
+                  <option key={p.id} value={p.name}>{p.name}</option>
+                ))}
+                <option value="Celesc Distribuição" />
+                <option value="Casan" />
+                <option value="Vivo Fibra" />
+                <option value="Claro Telecom" />
+              </datalist>
             </div>
+          </div>
+
+          {/* Competência & Vencimento */}
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block font-semibold text-slate-700 mb-1">Competência (AAAA-MM):</label>
               <input
@@ -278,13 +334,9 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
                 value={competence}
                 onChange={(e) => setCompetence(e.target.value)}
                 placeholder="2024-04"
-                className="w-full p-2 rounded-lg border border-slate-300 font-mono"
+                className="w-full p-2 rounded-lg border border-slate-300 font-mono text-xs"
               />
             </div>
-          </div>
-
-          {/* Due date & Values */}
-          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block font-semibold text-slate-700 mb-1">Data de Vencimento:</label>
               <input
@@ -292,9 +344,13 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
                 required
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
-                className="w-full p-2 rounded-lg border border-slate-300"
+                className="w-full p-2 rounded-lg border border-slate-300 text-xs"
               />
             </div>
+          </div>
+
+          {/* Valor */}
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block font-semibold text-slate-700 mb-1">Valor da Fatura (R$):</label>
               <input
@@ -302,64 +358,31 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
                 required
                 value={billedAmount}
                 onChange={(e) => setBilledAmount(e.target.value)}
-                placeholder="0.00"
-                className="w-full p-2 rounded-lg border border-slate-300 font-mono font-bold"
+                placeholder="Ex: 1450.80"
+                className="w-full p-2 rounded-lg border border-slate-300 font-mono font-bold text-xs"
               />
             </div>
-          </div>
-
-          {/* Consumption and Tariff Flag */}
-          <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block font-semibold text-slate-700 mb-1">
-                Consumo ({utilityType === 'luz' ? 'kWh' : utilityType === 'agua' ? 'm³' : 'Mbps'}):
-              </label>
+              <label className="block font-semibold text-slate-700 mb-1">Nº Fatura / Documento:</label>
               <input
                 type="text"
-                value={consumptionValue}
-                onChange={(e) => setConsumptionValue(e.target.value)}
-                placeholder="0"
-                className="w-full p-2 rounded-lg border border-slate-300 font-mono"
+                value={invoiceNumber}
+                onChange={(e) => setInvoiceNumber(e.target.value)}
+                placeholder="FAT-0124"
+                className="w-full p-2 rounded-lg border border-slate-300 font-mono text-xs"
               />
             </div>
-            {utilityType === 'luz' ? (
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Bandeira Tarifária:</label>
-                <select
-                  value={tariffFlag}
-                  onChange={(e) => setTariffFlag(e.target.value as any)}
-                  className="w-full p-2 rounded-lg border border-slate-300 bg-white"
-                >
-                  <option value="verde">Verde (Sem acréscimo)</option>
-                  <option value="amarela">Amarela</option>
-                  <option value="vermelha_1">Vermelha Patamar 1</option>
-                  <option value="vermelha_2">Vermelha Patamar 2</option>
-                  <option value="escassez_hidrica">Escassez Hídrica</option>
-                </select>
-              </div>
-            ) : (
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Nº Nota Fiscal / Fatura:</label>
-                <input
-                  type="text"
-                  value={invoiceNumber}
-                  onChange={(e) => setInvoiceNumber(e.target.value)}
-                  placeholder="FAT-0124"
-                  className="w-full p-2 rounded-lg border border-slate-300 font-mono"
-                />
-              </div>
-            )}
           </div>
 
-          {/* Notes */}
+          {/* Observações */}
           <div>
             <label className="block font-semibold text-slate-700 mb-1">Observações:</label>
             <input
               type="text"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Ex: Fatura retificada pela distribuidora"
-              className="w-full p-2 rounded-lg border border-slate-300"
+              placeholder="Opcional"
+              className="w-full p-2 rounded-lg border border-slate-300 text-xs"
             />
           </div>
 
@@ -368,13 +391,13 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-100 rounded-lg transition-colors"
+              className="px-4 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-100 rounded-lg transition-colors"
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className="px-5 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-all shadow-sm"
+              className="px-5 py-1.5 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-all shadow-sm"
             >
               Salvar Lançamento
             </button>

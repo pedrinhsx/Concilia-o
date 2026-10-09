@@ -30,16 +30,16 @@ export const AuditReportModal: React.FC<AuditReportModalProps> = ({
         body: JSON.stringify({
           summary,
           recordsSample: records.slice(0, 15).map(r => ({
-            concessionaria: r.provider,
+            fornecedor: r.provider,
+            condominio: r.condoName,
+            uc: r.installationCode,
             utilidade: r.utilityType,
             competencia: r.competence,
-            unidade: r.unitName,
+            vencimento: r.dueDate,
             fatura_xlsx: r.billedAmount,
             lancamento_erp: r.ledgerAmount,
             diferenca: r.difference,
-            status: r.reconciliationStatus,
-            consumo: r.consumptionValue ? `${r.consumptionValue} ${r.consumptionUnit || ''}` : null,
-            bandeira: r.tariffFlag
+            status: r.reconciliationStatus
           })),
           insights
         })

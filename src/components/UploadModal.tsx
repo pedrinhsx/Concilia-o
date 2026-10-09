@@ -219,9 +219,9 @@ export const UploadModal: React.FC<UploadModalProps> = ({
                       <tr>
                         <th className="py-1.5 px-2">Competência</th>
                         <th className="py-1.5 px-2">Vencimento</th>
+                        <th className="py-1.5 px-2">Condomínio</th>
                         <th className="py-1.5 px-2">Fornecedor</th>
-                        <th className="py-1.5 px-2">Código/Instalação</th>
-                        <th className="py-1.5 px-2">Consumo</th>
+                        <th className="py-1.5 px-2">UC / Matrícula</th>
                         <th className="py-1.5 px-2 text-right">Valor (R$)</th>
                       </tr>
                     </thead>
@@ -230,9 +230,9 @@ export const UploadModal: React.FC<UploadModalProps> = ({
                         <tr key={idx} className="hover:bg-slate-50">
                           <td className="py-1.5 px-2 font-mono">{b.competence}</td>
                           <td className="py-1.5 px-2">{b.dueDate}</td>
-                          <td className="py-1.5 px-2 font-medium text-slate-900">{b.provider}</td>
+                          <td className="py-1.5 px-2 font-medium text-slate-900">{b.condoName || '-'}</td>
+                          <td className="py-1.5 px-2 text-slate-700">{b.provider}</td>
                           <td className="py-1.5 px-2 font-mono">{b.installationCode}</td>
-                          <td className="py-1.5 px-2">{b.consumptionValue ? `${b.consumptionValue} ${b.consumptionUnit || ''}` : '-'}</td>
                           <td className="py-1.5 px-2 text-right font-mono font-bold text-slate-900">
                             R$ {b.billedAmount.toFixed(2)}
                           </td>

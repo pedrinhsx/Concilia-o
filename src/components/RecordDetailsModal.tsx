@@ -96,8 +96,12 @@ export const RecordDetailsModal: React.FC<RecordDetailsModalProps> = ({ record, 
                   <strong className="text-slate-800">{getUtilityLabel(record.utilityType)}</strong>
                 </p>
                 <p className="flex justify-between">
-                  <span className="text-slate-400">Unidade / Local:</span>
-                  <strong className="text-slate-800">{record.unitName}</strong>
+                  <span className="text-slate-400">Condomínio:</span>
+                  <strong className="text-slate-800">{record.condoName}</strong>
+                </p>
+                <p className="flex justify-between">
+                  <span className="text-slate-400">UC / Matrícula:</span>
+                  <strong className="text-slate-800 font-mono">{record.installationCode}</strong>
                 </p>
                 <p className="flex justify-between">
                   <span className="text-slate-400">Competência:</span>
@@ -154,44 +158,26 @@ export const RecordDetailsModal: React.FC<RecordDetailsModalProps> = ({ record, 
 
           </div>
 
-          {/* Consumo Físico & Informações Regulatórias */}
-          {record.consumptionValue && (
-            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2">
-              <span className="text-2xs font-bold uppercase tracking-wider text-slate-500 block">
-                Medição Física & Parâmetros Técnicos
-              </span>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                <div>
-                  <span className="text-slate-400 block text-2xs">Consumo Apurado:</span>
-                  <strong className="text-slate-900 font-mono">
-                    {record.consumptionValue.toLocaleString('pt-BR')} {record.consumptionUnit}
-                  </strong>
-                </div>
-                {record.tariffFlag && record.tariffFlag !== 'n_a' && (
-                  <div>
-                    <span className="text-slate-400 block text-2xs">Bandeira Tarifária:</span>
-                    <strong className="text-slate-900 capitalize">
-                      {record.tariffFlag.replace('_', ' ')}
-                    </strong>
-                  </div>
-                )}
-                {record.billedAmount > 0 && record.consumptionValue > 0 && (
-                  <div>
-                    <span className="text-slate-400 block text-2xs">Custo Médio Unitário:</span>
-                    <strong className="text-slate-900 font-mono">
-                      R$ {(record.billedAmount / record.consumptionValue).toFixed(3)} / {record.consumptionUnit}
-                    </strong>
-                  </div>
-                )}
-                <div>
-                  <span className="text-slate-400 block text-2xs">Arquivo Origem:</span>
-                  <strong className="text-slate-900 truncate block">
-                    {record.bill?.importedFromFileName || 'Relatório .xlsx'}
-                  </strong>
-                </div>
+          {/* Informações de Origem e Auditoria */}
+          <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2">
+            <span className="text-2xs font-bold uppercase tracking-wider text-slate-500 block">
+              Origem dos Dados & Auditoria
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div>
+                <span className="text-slate-400 block text-2xs">Arquivo Importado:</span>
+                <strong className="text-slate-900 truncate block">
+                  {record.bill?.importedFromFileName || 'Lançado no sistema'}
+                </strong>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-2xs">Observações:</span>
+                <span className="text-slate-700">
+                  {record.auditNotes || record.bill?.notes || record.ledger?.notes || 'Sem observações adicionais.'}
+                </span>
               </div>
             </div>
-          )}
+          </div>
 
         </div>
 

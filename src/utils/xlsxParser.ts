@@ -198,22 +198,20 @@ export async function parseExcelReport(
   const colCompetence = findHeader(['competencia', 'mes_referencia', 'mes_ref', 'periodo', 'mes', 'ref', 'competencia_mes']);
   const colAmount = findHeader(['valor', 'valor_total', 'valor_faturado', 'vl_total', 'vl_fatura', 'total', 'valor_original', 'valor_a_pagar']);
   const colProvider = findHeader(['fornecedor', 'concessionaria', 'prestador', 'empresa', 'distribuidora', 'descricao_fornecedor']);
-  const colCode = findHeader(['instalacao', 'cdc', 'codigo', 'codigo_instalacao', 'matricula', 'uc', 'unidade_consumidora', 'conta_contrato', 'rgi', 'codigo_cliente']);
-  const colUnit = findHeader(['unidade', 'filial', 'centro_de_custo', 'imovel', 'predio', 'local', 'localizacao', 'estabelecimento']);
-  const colConsumption = findHeader(['consumo', 'kwh', 'm3', 'consumo_kwh', 'consumo_m3', 'medicao', 'leitura', 'mbps', 'mega']);
+  const colCode = findHeader(['uc', 'unidade_consumidora', 'matricula', 'instalacao', 'cdc', 'codigo', 'codigo_instalacao', 'conta_contrato', 'rgi', 'codigo_cliente']);
+  const colCondo = findHeader(['condominio', 'nome_condominio', 'nome_do_condominio', 'cliente', 'razao_social', 'unidade', 'filial', 'centro_de_custo', 'imovel', 'predio', 'local']);
   const colType = findHeader(['tipo', 'categoria', 'tipo_despesa', 'servico', 'utilidade', 'tipo_utilidade']);
-  const colFlag = findHeader(['bandeira', 'bandeira_tarifaria', 'tarifa']);
   const colInvoice = findHeader(['numero_nota', 'nota_fiscal', 'fatura', 'nf', 'numero_fatura', 'documento']);
 
   // Detect overall type
   let detectedType: UtilityType | 'misto' = forcedUtilityType || 'luz';
   if (!forcedUtilityType) {
     const fileLower = fileName.toLowerCase();
-    if (fileLower.includes('agua') || fileLower.includes('sanepar') || fileLower.includes('sabesp')) {
+    if (fileLower.includes('agua') || fileLower.includes('casan') || fileLower.includes('sanepar') || fileLower.includes('sabesp')) {
       detectedType = 'agua';
     } else if (fileLower.includes('internet') || fileLower.includes('telecom') || fileLower.includes('vivo') || fileLower.includes('claro')) {
       detectedType = 'internet';
-    } else if (fileLower.includes('luz') || fileLower.includes('energia') || fileLower.includes('enel') || fileLower.includes('cpfl')) {
+    } else if (fileLower.includes('luz') || fileLower.includes('celesc') || fileLower.includes('energia') || fileLower.includes('enel') || fileLower.includes('cpfl')) {
       detectedType = 'luz';
     } else if (fileLower.includes('misto') || fileLower.includes('consolid') || fileLower.includes('geral')) {
       detectedType = 'misto';
@@ -227,7 +225,7 @@ export async function parseExcelReport(
     const rawAmount = colAmount ? row[colAmount] : row[rawHeaders.find(h => /valor|total/i.test(h)) || ''];
     const billedAmount = parseBrazilianNumber(rawAmount);
 
-    if (billedAmount <= 0 && !row[colDueDate || ''] && !row[colCode || '']) {
+    if (billedAmount <= 0 && !row[colDueDate || ''] && !row[colCode || ''] && !row[colCondo || '']) {
       // Skip empty separator rows
       return;
     }
@@ -240,40 +238,31 @@ export async function parseExcelReport(
     let rowType: UtilityType = detectedType === 'misto' ? 'luz' : (detectedType as UtilityType);
     if (colType && row[colType]) {
       const typeStr = String(row[colType]).toLowerCase();
-      if (typeStr.includes('agu') || typeStr.includes('sanea')) rowType = 'agua';
+      if (typeStr.includes('agu') || typeStr.includes('sanea') || typeStr.includes('casan')) rowType = 'agua';
       else if (typeStr.includes('inter') || typeStr.includes('tele') || typeStr.includes('fibra')) rowType = 'internet';
-      else if (typeStr.includes('luz') || typeStr.includes('energ') || typeStr.includes('eletri')) rowType = 'luz';
+      else if (typeStr.includes('luz') || typeStr.includes('energ') || typeStr.includes('celesc') || typeStr.includes('eletri')) rowType = 'luz';
     }
 
-    // Determine provider
+    // Determine provider (Fornecedor)
     let provider = colProvider && row[colProvider] ? String(row[colProvider]).trim() : '';
     if (!provider) {
-      if (rowType === 'luz') provider = 'Enel Distribuição';
-      else if (rowType === 'agua') provider = 'Sabesp';
+      if (rowType === 'luz') provider = 'Celesc Distribuição';
+      else if (rowType === 'agua') provider = 'Casan';
       else provider = 'Vivo Fibra';
     }
 
-    // Determine installation code
+    // Determine installation code (Unidade Consumidora / UC)
     let installationCode = colCode && row[colCode] ? String(row[colCode]).trim() : '';
     if (!installationCode) {
-      installationCode = `INST-${1000 + index}`;
+      installationCode = `UC-${1000 + index}`;
     }
 
-    // Determine unit
-    let unitName = colUnit && row[colUnit] ? String(row[colUnit]).trim() : 'Sede Principal';
-
-    // Consumption
-    let consumptionValue: number | undefined = undefined;
-    let consumptionUnit: 'kWh' | 'm³' | 'Mbps' | undefined = undefined;
-
-    if (colConsumption && row[colConsumption] !== undefined && row[colConsumption] !== '') {
-      consumptionValue = parseBrazilianNumber(row[colConsumption]);
-      if (rowType === 'luz') consumptionUnit = 'kWh';
-      else if (rowType === 'agua') consumptionUnit = 'm³';
-      else consumptionUnit = 'Mbps';
+    // Determine condominium name
+    let condoName = colCondo && row[colCondo] ? String(row[colCondo]).trim() : '';
+    if (!condoName) {
+      condoName = `Condomínio ${index + 1}`;
     }
 
-    const tariffFlag = (rowType === 'luz' && colFlag) ? detectTariffFlag(row[colFlag]) : (rowType === 'luz' ? 'verde' : 'n_a');
     const invoiceNumber = colInvoice && row[colInvoice] ? String(row[colInvoice]).trim() : `FAT-${competence.replace('-', '')}-${index + 1}`;
 
     bills.push({
@@ -281,13 +270,10 @@ export async function parseExcelReport(
       utilityType: rowType,
       provider,
       installationCode,
-      unitName,
+      condoName,
       competence,
       dueDate,
       billedAmount,
-      consumptionValue,
-      consumptionUnit,
-      tariffFlag,
       invoiceNumber,
       status: 'aberto',
       importedFromFileName: fileName,
@@ -314,112 +300,84 @@ export function generateSampleExcelTemplate(): void {
 
   // 1. Sheet Energia Elétrica (Luz)
   const luzHeaders = [
-    'Competência', 'Data Vencimento', 'Fornecedor', 'Código Instalação', 'Unidade / Filial', 
-    'Consumo (kWh)', 'Bandeira Tarifária', 'Valor Faturado (R$)', 'Nº Fatura', 'Status'
+    'Condomínio', 'Unidade Consumidora (UC)', 'Fornecedor', 'Competência', 'Data Vencimento', 
+    'Valor Faturado (R$)', 'Nº Fatura', 'Status'
   ];
   const luzData = [
-    ['01/2024', '15/02/2024', 'Enel Distribuição SP', '4928104', 'Sede Matriz - Paulista', 4850, 'Verde', 3420.50, 'FAT-202401-01', 'Aberto'],
-    ['02/2024', '15/03/2024', 'Enel Distribuição SP', '4928104', 'Sede Matriz - Paulista', 5120, 'Amarela', 3890.15, 'FAT-202402-01', 'Aberto'],
-    ['03/2024', '15/04/2024', 'Enel Distribuição SP', '4928104', 'Sede Matriz - Paulista', 4980, 'Verde', 3510.80, 'FAT-202403-01', 'Aberto'],
-    ['04/2024', '15/05/2024', 'Enel Distribuição SP', '4928104', 'Sede Matriz - Paulista', 4650, 'Verde', 3290.40, 'FAT-202404-01', 'Aberto'],
-    ['01/2024', '20/02/2024', 'CPFL Paulista', '8812903', 'Filial Campinas', 2300, 'Verde', 1780.00, 'FAT-202401-02', 'Aberto'],
-    ['02/2024', '20/03/2024', 'CPFL Paulista', '8812903', 'Filial Campinas', 2410, 'Amarela', 1950.40, 'FAT-202402-02', 'Aberto'],
-    ['01/2024', '10/02/2024', 'Elektro', '7730192', 'Galpão Logística', 6800, 'Verde', 4920.00, 'FAT-202401-03', 'Aberto'],
-    ['02/2024', '10/03/2024', 'Elektro', '7730192', 'Galpão Logística', 7100, 'Amarela', 5340.20, 'FAT-202402-03', 'Aberto']
+    ['Residencial Solar das Palmeiras', '9872134', 'Celesc Distribuição', '04/2024', '15/05/2024', 3420.50, 'FAT-202404-01', 'Aberto'],
+    ['Condomínio Edifício Bellagio', '4512903', 'Celesc Distribuição', '04/2024', '18/05/2024', 1890.15, 'FAT-202404-02', 'Aberto'],
+    ['Edifício Jardins do Vale', '1092834', 'Celesc Distribuição', '04/2024', '20/05/2024', 2110.80, 'FAT-202404-03', 'Aberto'],
+    ['Condomínio Bella Vista', '7781920', 'Celesc Distribuição', '04/2024', '22/05/2024', 2740.00, 'FAT-202404-04', 'Aberto']
   ];
   const wsLuz = XLSX.utils.aoa_to_sheet([luzHeaders, ...luzData]);
-  wsLuz['!cols'] = [{ wch: 14 }, { wch: 16 }, { wch: 22 }, { wch: 18 }, { wch: 26 }, { wch: 15 }, { wch: 18 }, { wch: 20 }, { wch: 18 }, { wch: 12 }];
-  XLSX.utils.book_append_sheet(wb, wsLuz, 'Relatório Luz (Energia)');
+  wsLuz['!cols'] = [{ wch: 32 }, { wch: 22 }, { wch: 22 }, { wch: 14 }, { wch: 16 }, { wch: 18 }, { wch: 16 }, { wch: 12 }];
+  XLSX.utils.book_append_sheet(wb, wsLuz, 'Relatório Luz (Celesc)');
 
   // 2. Sheet Água e Esgoto
   const aguaHeaders = [
-    'Competência', 'Data Vencimento', 'Fornecedor', 'RGI / Matrícula', 'Unidade / Filial',
-    'Consumo (m³)', 'Valor Faturado (R$)', 'Nº Fatura', 'Status'
+    'Condomínio', 'Matrícula / UC', 'Fornecedor', 'Competência', 'Data Vencimento',
+    'Valor Faturado (R$)', 'Nº Fatura', 'Status'
   ];
   const aguaData = [
-    ['01/2024', '18/02/2024', 'Sabesp', '049281-9', 'Sede Matriz - Paulista', 48, 642.80, 'SAB-202401', 'Aberto'],
-    ['02/2024', '18/03/2024', 'Sabesp', '049281-9', 'Sede Matriz - Paulista', 52, 698.40, 'SAB-202402', 'Aberto'],
-    ['03/2024', '18/04/2024', 'Sabesp', '049281-9', 'Sede Matriz - Paulista', 89, 1280.90, 'SAB-202403', 'Aberto'], // Anomalia de vazamento
-    ['01/2024', '22/02/2024', 'Sanasa Campinas', '19283-0', 'Filial Campinas', 28, 385.00, 'SAN-202401', 'Aberto'],
-    ['01/2024', '14/02/2024', 'DAE Jundiaí', '77312-4', 'Galpão Logística', 34, 460.50, 'DAE-202401', 'Aberto']
+    ['Residencial Solar das Palmeiras', '9872134', 'Casan', '04/2024', '18/05/2024', 642.80, 'CAS-202404-01', 'Aberto'],
+    ['Condomínio Edifício Bellagio', '4512903', 'Casan', '04/2024', '20/05/2024', 498.40, 'CAS-202404-02', 'Aberto']
   ];
   const wsAgua = XLSX.utils.aoa_to_sheet([aguaHeaders, ...aguaData]);
-  wsAgua['!cols'] = [{ wch: 14 }, { wch: 16 }, { wch: 20 }, { wch: 18 }, { wch: 26 }, { wch: 15 }, { wch: 20 }, { wch: 16 }, { wch: 12 }];
-  XLSX.utils.book_append_sheet(wb, wsAgua, 'Relatório Água');
+  wsAgua['!cols'] = [{ wch: 32 }, { wch: 20 }, { wch: 20 }, { wch: 14 }, { wch: 16 }, { wch: 18 }, { wch: 16 }, { wch: 12 }];
+  XLSX.utils.book_append_sheet(wb, wsAgua, 'Relatório Água (Casan)');
 
   // 3. Sheet Internet / Telecom
   const telecomHeaders = [
-    'Competência', 'Data Vencimento', 'Fornecedor', 'Código Contrato', 'Unidade / Filial',
-    'Velocidade / Plano', 'Valor Faturado (R$)', 'Nº Fatura', 'Status'
+    'Condomínio', 'Código Contrato', 'Fornecedor', 'Competência', 'Data Vencimento',
+    'Valor Faturado (R$)', 'Nº Fatura', 'Status'
   ];
   const telecomData = [
-    ['01/2024', '25/02/2024', 'Vivo Fibra Empresas', 'CTR-99210', 'Sede Matriz - Paulista', '600 Mbps Dedicado', 489.90, 'VIV-202401', 'Aberto'],
-    ['02/2024', '25/03/2024', 'Vivo Fibra Empresas', 'CTR-99210', 'Sede Matriz - Paulista', '600 Mbps Dedicado', 489.90, 'VIV-202402', 'Aberto'],
-    ['03/2024', '25/04/2024', 'Vivo Fibra Empresas', 'CTR-99210', 'Sede Matriz - Paulista', '600 Mbps Dedicado', 549.90, 'VIV-202403', 'Aberto'], // Reajuste
-    ['01/2024', '28/02/2024', 'Claro Telecom', 'CTR-55102', 'Filial Campinas', '500 Mbps IP Fixo', 320.00, 'CLA-202401', 'Aberto'],
-    ['01/2024', '20/02/2024', 'Vero Internet', 'CTR-33910', 'Galpão Logística', '400 Mbps Fibra', 249.90, 'VER-202401', 'Aberto']
+    ['Residencial Solar das Palmeiras', 'CTR-99210', 'Vivo Fibra', '04/2024', '25/05/2024', 189.90, 'VIV-202404-01', 'Aberto'],
+    ['Condomínio Edifício Bellagio', 'CTR-55102', 'Claro Telecom', '04/2024', '28/05/2024', 160.00, 'CLA-202404-02', 'Aberto']
   ];
   const wsTelecom = XLSX.utils.aoa_to_sheet([telecomHeaders, ...telecomData]);
-  wsTelecom['!cols'] = [{ wch: 14 }, { wch: 16 }, { wch: 24 }, { wch: 18 }, { wch: 26 }, { wch: 22 }, { wch: 20 }, { wch: 16 }, { wch: 12 }];
+  wsTelecom['!cols'] = [{ wch: 32 }, { wch: 20 }, { wch: 20 }, { wch: 14 }, { wch: 16 }, { wch: 18 }, { wch: 16 }, { wch: 12 }];
   XLSX.utils.book_append_sheet(wb, wsTelecom, 'Relatório Internet');
 
-  // 4. Sheet Geral Consolidado (Todos os 3 serviços em uma única aba)
-  const consolidadoHeaders = [
-    'Tipo Utilidade', 'Competência', 'Vencimento', 'Fornecedor', 'Código Instalação', 'Unidade', 'Consumo Medido', 'Valor Faturado (R$)', 'Nº Documento'
-  ];
-  const consolidadoData = [
-    ['Luz', '01/2024', '15/02/2024', 'Enel SP', '4928104', 'Sede Matriz', '4850 kWh', 3420.50, 'FAT-01'],
-    ['Água', '01/2024', '18/02/2024', 'Sabesp', '049281-9', 'Sede Matriz', '48 m³', 642.80, 'FAT-02'],
-    ['Internet', '01/2024', '25/02/2024', 'Vivo Fibra', 'CTR-99210', 'Sede Matriz', '600 Mbps', 489.90, 'FAT-03'],
-    ['Luz', '01/2024', '20/02/2024', 'CPFL', '8812903', 'Filial Campinas', '2300 kWh', 1780.00, 'FAT-04'],
-    ['Água', '01/2024', '22/02/2024', 'Sanasa', '19283-0', 'Filial Campinas', '28 m³', 385.00, 'FAT-05'],
-    ['Internet', '01/2024', '28/02/2024', 'Claro', 'CTR-55102', 'Filial Campinas', '500 Mbps', 320.00, 'FAT-06']
-  ];
-  const wsConsolidado = XLSX.utils.aoa_to_sheet([consolidadoHeaders, ...consolidadoData]);
-  wsConsolidado['!cols'] = [{ wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 20 }, { wch: 18 }, { wch: 20 }, { wch: 16 }, { wch: 20 }, { wch: 16 }];
-  XLSX.utils.book_append_sheet(wb, wsConsolidado, 'Consolidado Geral');
-
-  XLSX.writeFile(wb, 'Modelo_Relatorio_Contas_Consumo_Luz_Agua_Internet.xlsx');
+  XLSX.writeFile(wb, 'Modelo_Relatorio_Contas_Condominios.xlsx');
 }
 
 // Export reconciled analysis results to a styled Excel spreadsheet
 export function exportReconciliationToExcel(
   records: ReconciledRecord[],
-  fileName: string = 'Relatorio_Conciliacao_Utilidades.xlsx'
+  fileName: string = 'Relatorio_Conciliacao_Condominios.xlsx'
 ): void {
   const wb = XLSX.utils.book_new();
 
   // Sheet 1: Todos os Lançamentos Conciliados
   const mainHeaders = [
-    'Status Conciliação', 'Tipo Utilidade', 'Competência', 'Data Vencimento', 'Fornecedor',
-    'Cód. Instalação', 'Unidade / Centro Custo', 'Valor Fatura (.xlsx)', 'Valor Lançado (ERP)',
-    'Diferença (R$)', 'Consumo', 'Bandeira', 'Notas de Auditoria'
+    'Status Conciliação', 'Tipo Utilidade', 'Condomínio', 'UC / Matrícula', 'Fornecedor',
+    'Competência', 'Data Vencimento', 'Valor Fatura (.xlsx)', 'Valor Lançado (ERP)',
+    'Diferença (R$)', 'Notas de Auditoria'
   ];
 
   const mainRows = records.map(r => [
     r.reconciliationStatus === 'conciliado' ? 'CONCILIADO' :
     r.reconciliationStatus === 'divergencia_valor' ? 'DIVERGÊNCIA' :
+    r.reconciliationStatus === 'nao_lancada' ? 'NÃO LANÇADA' :
     r.reconciliationStatus === 'pendente_pagamento' ? 'PENDENTE BAIXA' :
     r.reconciliationStatus === 'lancamento_sem_fatura' ? 'SEM FATURA ANEXADA' : 'DUPLICIDADE',
     r.utilityType.toUpperCase(),
+    r.condoName,
+    r.installationCode,
+    r.provider,
     r.competence,
     r.dueDate,
-    r.provider,
-    r.installationCode,
-    r.unitName,
     r.billedAmount,
     r.ledgerAmount,
     r.difference,
-    r.consumptionValue ? `${r.consumptionValue} ${r.consumptionUnit || ''}` : '-',
-    r.tariffFlag ? r.tariffFlag.toUpperCase() : '-',
     r.auditNotes || ''
   ]);
 
   const wsMain = XLSX.utils.aoa_to_sheet([mainHeaders, ...mainRows]);
   wsMain['!cols'] = [
-    { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 22 },
-    { wch: 18 }, { wch: 24 }, { wch: 18 }, { wch: 18 }, { wch: 15 },
-    { wch: 16 }, { wch: 14 }, { wch: 30 }
+    { wch: 18 }, { wch: 14 }, { wch: 32 }, { wch: 18 }, { wch: 22 },
+    { wch: 14 }, { wch: 16 }, { wch: 18 }, { wch: 18 }, { wch: 15 }, { wch: 30 }
   ];
   XLSX.utils.book_append_sheet(wb, wsMain, 'Painel de Conciliação');
 
@@ -428,17 +386,17 @@ export function exportReconciliationToExcel(
   const issueRows = issues.map(r => [
     r.reconciliationStatus.toUpperCase(),
     r.utilityType.toUpperCase(),
-    r.competence,
-    r.provider,
+    r.condoName,
     r.installationCode,
-    r.unitName,
+    r.provider,
+    r.competence,
     r.billedAmount,
     r.ledgerAmount,
     r.difference,
-    r.auditNotes || 'Requer conferência com concessionária'
+    r.auditNotes || 'Requer conferência com fornecedor'
   ]);
   const wsIssues = XLSX.utils.aoa_to_sheet([
-    ['Status', 'Tipo', 'Competência', 'Fornecedor', 'Código', 'Unidade', 'Valor Fatura', 'Valor ERP', 'Diferença', 'Ação Recomendada'],
+    ['Status', 'Tipo', 'Condomínio', 'UC', 'Fornecedor', 'Competência', 'Valor Fatura', 'Valor ERP', 'Diferença', 'Ação'],
     ...issueRows
   ]);
   XLSX.utils.book_append_sheet(wb, wsIssues, 'Pendências & Divergências');

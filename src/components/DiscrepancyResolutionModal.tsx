@@ -42,7 +42,7 @@ export const DiscrepancyResolutionModal: React.FC<DiscrepancyResolutionModalProp
                 Resolução de Divergência Financeira
               </h2>
               <p className="text-xs text-slate-600">
-                {record.provider} · Competência {record.competence} · {record.unitName}
+                {record.provider} · Competência {record.competence} · {record.condoName} (UC: {record.installationCode})
               </p>
             </div>
           </div>
